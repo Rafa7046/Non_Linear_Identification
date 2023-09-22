@@ -1,4 +1,4 @@
-# Non_Linear_Identification
+# Non Linear Identification
 
 # Data description
 
@@ -54,3 +54,34 @@ input is a periodic sine sweep.
 * Columns
 	1. input u
 	2. output y
+
+## Data from Cascaded Tanks with Overflow
+
+Data in `tanque.csv` file from Cascaded Tanks with Overflow. The cascaded tanks system is a fluid level control system consisting of two tanks with free outlets fed by a pump. The input signal controls a water pump that delivers the water from a reservoir into the upper water tank. The water of the upper tank flows through a small opening into the lower tank, and finally through a small opening from the lower tank back into the reservoir. 
+
+* Sampling time := 4 s
+* Number of samples := 1024 samples
+* Inputs
+    * uVal := Tension
+* Outputs
+    * yVal := Level of water
+* Columns
+	1. uEst
+	2. uVal
+ 	3. yEst
+ 	4. yVal
+  	5. Ts
+
+ ## Data from Silverbox System
+
+Data in `SNLS80mV.csv` file from Silverbox System. The Silverbox system can be seen as an electronic implementation of the Duffing oscillator. It is build as a 2nd order linear time-invariant system with a 3rd degree polynomial static nonlinearity around it in feedback. This type of dynamics are, for instance, often encountered in mechanical systems.
+
+* Sampling time := _unknown_
+* Number of samples := 131073 samples
+* Inputs
+    * V1 := is the input record 
+* Outputs
+    * V2 := is the measured output
+* Columns
+    1. V1
+    2. V2
