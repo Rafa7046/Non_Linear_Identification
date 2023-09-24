@@ -2,7 +2,7 @@ import numpy as np
 from utils import generate_combinations
 
 
-def data_matrix(u, y, nu=1, ny=1):
+def data_matrix(u, y, nu=1, ny=1, ne=0):
     """
     Computes the data matrix Ψ , given the input and output vector.
 
@@ -16,14 +16,16 @@ def data_matrix(u, y, nu=1, ny=1):
         Number of inputs. The default is 1.
     ny : int, optional
         Number of outputs. The default is 1.
+    ne : int, optional
+        Number of moving averages. The default is 0.
 
     Returns
     -------
     Ψ : array_like
-        Data matrix consisting of nu + ny columns.
+        Data matrix consisting of nu + ny + ne columns.
     """
     N = len(u)
-    n = max(nu, ny)
+    n = max(nu, ny, ne)
     U = np.zeros((N-n, nu))
     Y = np.zeros((N-n, ny))
 
@@ -32,11 +34,19 @@ def data_matrix(u, y, nu=1, ny=1):
 
     for i in range(ny):
         Y[:, -(i+1)] = y[i+1:N-n+i+1]
+    
+    if ne == 0:
+        return np.hstack((Y, U))
+    
+    E = np.zeros((N-n, ne))
+    e = np.random.default_rng().random(len(u))
+    
+    for i in range(ne):
+        E[:, -(i+1)] = e[i+1:N-n+i+1]
 
-    return np.hstack((Y, U))
+    return np.hstack((Y, U, E))
 
-
-def get_model_term(idxs, nu, ny):
+def get_model_term(idxs, nu, ny, ne):
     """
     Returns the model term corresponding to the given indices.
 
@@ -48,6 +58,8 @@ def get_model_term(idxs, nu, ny):
         Number of inputs.
     ny : int
         Number of outputs.
+    ne : int
+        Number of moving averages.
 
     Returns
     -------
@@ -56,7 +68,9 @@ def get_model_term(idxs, nu, ny):
     """
     ans = ""
     for i in idxs:
-        if i + 1 > ny:
+        if i + 1 > ny+nu:
+            ans += f" e[k-{nu+ny+ne-i}]"
+        elif i + 1 > ny:
             ans += f" u[k-{nu+ny-i}]"
         else:
             ans += f" y[k-{ny-i}]"
