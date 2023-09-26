@@ -1,3 +1,7 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+
 def combine(arr, k):
     """
     Returns all possible combinations of k elements with repetition from arr.
@@ -51,3 +55,47 @@ def generate_combinations(arr, size):
         for comb in combine(arr, k):
             answer.append(comb)
     return answer
+
+
+def plot_io(u, y, title):
+    """
+    Plots the input and output signals.
+
+    Parameters
+    ----------
+    u : array_like
+        Input signal.
+    y : array_like
+        Output signal.
+    title : str
+        Title of the plot.
+    """
+    plt.figure(figsize=(16, 9))
+    plt.plot(u, label="u", color="k")
+    plt.plot(y, label="y", color="r")
+    plt.xlabel("timestep")
+    plt.title(title)
+    plt.legend()
+    plt.grid(True)
+
+
+def plot_y(y, y_pred, title):
+    """
+    Plots the output and predicted output signals.
+
+    Parameters
+    ----------
+    y : array_like
+        Output signal.
+    y_pred : array_like
+        Predicted output signal.
+    title : str
+        Title of the plot.
+    """
+    plt.figure(figsize=(16, 9))
+    plt.plot(y, label="y", color="k", linestyle="--")
+    plt.plot(y_pred, label="y_pred", color="r")
+    plt.xlabel("timestep")
+    plt.title(title)
+    plt.legend()
+    plt.grid(True)
