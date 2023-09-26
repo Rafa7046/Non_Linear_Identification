@@ -2,6 +2,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import sysid as sd
 
+from utils import plot_y
+
 
 class Semp:
     def __init__(self, u, y, l, nu, ny, ne):
@@ -15,13 +17,7 @@ class Semp:
         self.limit = -max(self.nu, self.ny, self.ne)
 
     def __plot(self, t, y, y_hat, title, error):
-        plt.plot(t[: self.limit], y[: self.limit], label="Real")
-        plt.plot(t[: self.limit], y_hat, label="Prediction")
-        plt.xlabel("time (s)")
-        plt.title(title)
-        plt.legend()
-        plt.show()
-        print("=" * 30)
+        plot_y(y=y[: self.limit], y_pred=y_hat, title=title)
         print(f"MSE of the Model = {error}")
         print("=" * 30)
 
@@ -45,23 +41,23 @@ class Semp:
                     )
 
         return candidates_test
-    
+
     def __prediction(self, psi_in, psi_out, y_train, i):
         tup = (np.array(psi_in.copy()), psi_out[:, i])
         aux = np.column_stack(tup) if i != 0 else psi_out[:, i].copy()
         iteractions = 1 if self.ne == 0 else self.ne - 1
 
-        # for j in range(iteractions):
-        if i != 0:
-            theta = np.linalg.inv(aux.T @ aux) @ aux.T @ y_train
-            y_hat = aux @ theta
-        else:
-            theta = (1 / np.dot(aux.T, aux)) * aux.T @ y_train
-            y_hat = aux * theta
+        for j in range(iteractions):
+            if i != 0:
+                theta = np.linalg.inv(aux.T @ aux) @ aux.T @ y_train
+                y_hat = aux @ theta
+            else:
+                theta = (1 / np.dot(aux.T, aux)) * aux.T @ y_train
+                y_hat = aux * theta
 
-            # e = y_train - y_hat
-            # if self.ne != 0:
-            #     psi_out[:, self.nu + self.ny + 1 + j] = e
+            e = y_train - y_hat
+            if self.ne != 0:
+                psi_out[:, self.nu + self.ny + 1 + j] = e
 
         return y_hat, aux
 

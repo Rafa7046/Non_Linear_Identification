@@ -46,7 +46,7 @@ def data_matrix(u, y, nu=1, ny=1, ne=0):
 
     return np.hstack((Y, U, E))
 
-def get_model_term(idxs, nu, ny, ne):
+def get_model_term(idxs, nu, ny, ne=0):
     """
     Returns the model term corresponding to the given indices.
 

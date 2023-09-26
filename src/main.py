@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from utils import plot_io, plot_y
 
 
-def gram_schmdit(cm, y, n):
+def frols(cm, y, tol=0.05):
     w1i = [cm[:, i] for i in range(cm.shape[1])]
     M = len(w1i)
     g1i = [w1i[i] @ y / (w1i[i] @ w1i[i]) for i in range(len(w1i))]
@@ -14,7 +14,10 @@ def gram_schmdit(cm, y, n):
     selected = [np.argmax(ERRi)]
     W = [w1i[selected[0]]]
 
-    for k in range(1, n):
+    selected_erri = [ERRi[selected[0]]]
+
+    k = 1
+    while 1 - np.sum(selected_erri) < tol:
         ERRi = []
         for i in range(M):
             if i not in selected:
@@ -26,6 +29,8 @@ def gram_schmdit(cm, y, n):
                 ERRi.append(0)
         selected.append(np.argmax(ERRi))
         W.append(w1i[selected[k]])
+        selected_erri.append(ERRi[selected[k]])
+        k += 1
 
     return selected
 
@@ -34,34 +39,55 @@ if __name__ == "__main__":
 
     # loading the data
 
-    df = pd.read_csv("data/ball-and-beam.csv")
+    dataset_name = "tanque"
+    df = pd.read_csv(f"data/{dataset_name}.csv")
 
-    u = df["u"].values
-    y = df["y"].values
-
-    plot_io(
-        u=u, y=y, title="Robot arm system"
-    )
+    if dataset_name in ["ball-and-beam", "robot-arm"]:
+        u = df["u"].values
+        y = df["y"].values
+    elif dataset_name == "exchanger":
+        u = df["q"].values
+        y = df["th"].values
+    elif dataset_name == "SNLS80mV":
+        u = df["V1"].values
+        y = df["V2"].values
+    elif dataset_name == "tanque":
+        u_train, y_train = df["uEst"].values, df["yEst"].values
+        u_test, y_test = df["uVal"].values, df["yVal"].values
 
     # separate the data into training and testing sets
 
-    n_train = int(0.2 * df.shape[0])
-    u_train, u_test = u[-n_train:], u[:-n_train]
-    y_train, y_test = y[-n_train:], y[:-n_train]
+    if dataset_name != "tanque":
+
+        plot_io(
+            u=u, y=y, title=dataset_name.replace('-', ' ')
+        )
+
+        n_train = int(0.2 * df.shape[0])
+        u_train, u_test = u[-n_train:], u[:-n_train]
+        y_train, y_test = y[-n_train:], y[:-n_train]
 
     # creating the data matrix for the train set
 
-    nu, ny = 2, 2
-    dm = sd.data_matrix(u=u_train, y=y_train, nu=nu, ny=ny)
+    nu, ny, ne = 2, 2, 0
+    dm = sd.data_matrix(u=u_train, y=y_train, nu=nu, ny=ny, ne=ne)
 
     # creating the candidate matrix for the train set
+    l = 3
+    cm, comb = sd.candidate_matrix(dm, l)
 
-    cm, comb = sd.candidate_matrix(dm, 3)
+    Y = y_train[:-max(nu, ny, ne)]
 
-    Y = y_train[:-max(nu, ny)]
+    tol_dict = {
+        "exchanger": 0.001,
+        "ball-and-beam": 0.0001,
+        "robot-arm": 0.001,
+        "tanque": 0.00001,
+        "SNLS80mV": 0.001
+    }
 
-    # structure selection with gram_schmdit
-    selected = gram_schmdit(cm, Y, 4)
+    # structure selection with frols
+    selected = frols(cm, Y, tol_dict[dataset_name])
 
     # parameter estimation on train set
     P = cm[:, selected]
@@ -71,22 +97,23 @@ if __name__ == "__main__":
     y_pred = P @ T
 
     plot_y(
-        y=Y, y_pred=y_pred, title="Robot arm system - Train set"
+        y=Y, y_pred=y_pred,
+        title=f"{dataset_name.replace('-', ' ')} - Train"
     )
 
-    print("Selected terms:")
+    print("Selected terms: %d of %d" % (len(selected), len(comb)))
     for i in selected:
-        print(sd.get_model_term(comb[i], nu, ny))
+        print(sd.get_model_term(comb[i], nu, ny, ne))
 
     # parameter estimation on test set
 
-    dm = sd.data_matrix(u=u_test, y=y_test, nu=nu, ny=ny)
+    dm = sd.data_matrix(u=u_test, y=y_test, nu=nu, ny=ny, ne=ne)
 
     # creating the candidate matrix for the test set
 
-    cm, comb = sd.candidate_matrix(dm, 3)
+    cm, comb = sd.candidate_matrix(dm, l)
 
-    Y = y_test[:-max(nu, ny)]
+    Y = y_test[:-max(nu, ny, ne)]
 
     # parameter estimation on train set
     P = cm[:, selected]
@@ -94,12 +121,13 @@ if __name__ == "__main__":
     y_pred = P @ T
 
     plot_y(
-        y=Y, y_pred=y_pred, title="Robot arm system - Test set"
+        y=Y, y_pred=y_pred,
+        title=f"{dataset_name.replace('-', ' ')} - Validation"
     )
 
     # computes mean squared error
 
     mse = np.mean((y_pred - Y)**2)
-    print("MSE=%.4f" % (mse))
+    print("MSE=%f" % (mse))
 
     plt.show()
