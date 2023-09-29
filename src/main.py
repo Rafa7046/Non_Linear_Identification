@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from utils import plot_io, plot_y
 
 
-def frols(cm, y, tol=0.05):
+def frols(cm, y, tol=0.05, max_iter=100):
     w1i = [cm[:, i] for i in range(cm.shape[1])]
     M = len(w1i)
     g1i = [w1i[i] @ y / (w1i[i] @ w1i[i]) for i in range(len(w1i))]
@@ -17,7 +17,7 @@ def frols(cm, y, tol=0.05):
     selected_erri = [ERRi[selected[0]]]
 
     k = 1
-    while 1 - np.sum(selected_erri) < tol:
+    while 1 - np.sum(selected_erri) < tol and k < max_iter:
         ERRi = []
         for i in range(M):
             if i not in selected:
@@ -39,7 +39,7 @@ if __name__ == "__main__":
 
     # loading the data
 
-    dataset_name = "tanque"
+    dataset_name = "ball-and-beam"
     df = pd.read_csv(f"data/{dataset_name}.csv")
 
     if dataset_name in ["ball-and-beam", "robot-arm"]:
@@ -79,15 +79,17 @@ if __name__ == "__main__":
     Y = y_train[:-max(nu, ny, ne)]
 
     tol_dict = {
-        "exchanger": 0.001,
-        "ball-and-beam": 0.0001,
-        "robot-arm": 0.001,
-        "tanque": 0.00001,
-        "SNLS80mV": 0.001
+        "exchanger": 0.01,
+        "ball-and-beam": 0.01,
+        "robot-arm": 0.01,
+        "tanque": 0.01,
+        "SNLS80mV": 0.01
     }
 
     # structure selection with frols
-    selected = frols(cm, Y, tol_dict[dataset_name])
+    selected = frols(cm, Y, tol_dict[dataset_name], 5)
+
+    print(selected)
 
     # parameter estimation on train set
     P = cm[:, selected]
