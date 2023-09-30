@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from utils import plot_io, plot_y
 
 
-def frols(cm, y, tol=0.05, max_iter=100):
+def frols(cm, y, tol, max_iter):
     w1i = [cm[:, i] for i in range(cm.shape[1])]
     M = len(w1i)
     g1i = [w1i[i] @ y / (w1i[i] @ w1i[i]) for i in range(len(w1i))]
@@ -17,7 +17,7 @@ def frols(cm, y, tol=0.05, max_iter=100):
     selected_erri = [ERRi[selected[0]]]
 
     k = 1
-    while 1 - np.sum(selected_erri) < tol and k < max_iter:
+    while 1 - np.sum(selected_erri) > tol and k < max_iter:
         ERRi = []
         for i in range(M):
             if i not in selected:
@@ -28,19 +28,22 @@ def frols(cm, y, tol=0.05, max_iter=100):
             else:
                 ERRi.append(0)
         selected.append(np.argmax(ERRi))
-        W.append(w1i[selected[k]])
+        W.append(w1i[selected[k]] - sum([alpha[j] * W[j] for j in range(k)]))
         selected_erri.append(ERRi[selected[k]])
         k += 1
 
-    return selected
+    selected.pop()
+    selected_erri.pop()
+
+    return selected, selected_erri
 
 
 if __name__ == "__main__":
 
     # loading the data
 
-    dataset_name = "ball-and-beam"
-    df = pd.read_csv(f"data/{dataset_name}.csv")
+    dataset_name = "robot-arm"
+    df = pd.read_csv(f"src/data/{dataset_name}.csv")
 
     if dataset_name in ["ball-and-beam", "robot-arm"]:
         u = df["u"].values
@@ -69,27 +72,18 @@ if __name__ == "__main__":
 
     # creating the data matrix for the train set
 
-    nu, ny, ne = 2, 2, 0
+    nu, ny, ne = 3, 3, 0
     dm = sd.data_matrix(u=u_train, y=y_train, nu=nu, ny=ny, ne=ne)
 
     # creating the candidate matrix for the train set
-    l = 3
-    cm, comb = sd.candidate_matrix(dm, l)
+    nlin = 3
+    cm, comb = sd.candidate_matrix(dm, nlin)
 
     Y = y_train[:-max(nu, ny, ne)]
 
-    tol_dict = {
-        "exchanger": 0.01,
-        "ball-and-beam": 0.01,
-        "robot-arm": 0.01,
-        "tanque": 0.01,
-        "SNLS80mV": 0.01
-    }
-
+    tol = 0.01
     # structure selection with frols
-    selected = frols(cm, Y, tol_dict[dataset_name], 5)
-
-    print(selected)
+    selected, ERR = frols(cm, Y, tol, 5)
 
     # parameter estimation on train set
     P = cm[:, selected]
@@ -103,9 +97,11 @@ if __name__ == "__main__":
         title=f"{dataset_name.replace('-', ' ')} - Train"
     )
 
-    print("Selected terms: %d of %d" % (len(selected), len(comb)))
-    for i in selected:
-        print(sd.get_model_term(comb[i], nu, ny, ne))
+    print("ERRi = ", ERR)
+    print("ESR = %f" % (1 - np.sum(ERR)))
+    print("Selected terms: %d of %d" % (len(selected), len(comb)), "with tol = %f" % (tol))
+    for i, t in zip(selected, T):
+        print("\n", sd.get_model_term(comb[i], nu, ny, ne), t)
 
     # parameter estimation on test set
 
@@ -113,7 +109,7 @@ if __name__ == "__main__":
 
     # creating the candidate matrix for the test set
 
-    cm, comb = sd.candidate_matrix(dm, l)
+    cm, comb = sd.candidate_matrix(dm, nlin)
 
     Y = y_test[:-max(nu, ny, ne)]
 
