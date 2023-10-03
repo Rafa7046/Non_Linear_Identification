@@ -42,8 +42,10 @@ if __name__ == "__main__":
 
     # loading the data
 
-    dataset_name = "robot-arm"
-    df = pd.read_csv(f"src/data/{dataset_name}.csv")
+    dataset_name = "ball-and-beam"
+    
+    if dataset_name != "uniform":
+        df = pd.read_csv(f"src/data/{dataset_name}.csv")
 
     if dataset_name in ["ball-and-beam", "robot-arm"]:
         u = df["u"].values
@@ -57,33 +59,59 @@ if __name__ == "__main__":
     elif dataset_name == "tanque":
         u_train, y_train = df["uEst"].values, df["yEst"].values
         u_test, y_test = df["uVal"].values, df["yVal"].values
+    elif dataset_name == "uniform":
+        u = np.random.uniform(-1, 1, 200)
+        y = np.zeros_like(u)
+
+        for k in range(2, len(y)):
+            y[k] = -0.605 * y[k - 1] - 0.163 * y[k - 2]**2 + 0.588 * u[k - 1] - 0.240 * u[k - 2]
 
     # separate the data into training and testing sets
 
     if dataset_name != "tanque":
+        mu, my = np.max(np.abs(u)), np.max(np.abs(y))
+
+        u = u / mu
+        y = y / my
+
+        n_train = int(0.2 * u.shape[0])
+        u_train, u_test = u[-n_train:], u[:-n_train]
+        y_train, y_test = y[-n_train:], y[:-n_train]
 
         plot_io(
             u=u, y=y, title=dataset_name.replace('-', ' ')
         )
+    else:
+        mu_train, mu_test = np.max(np.abs(u_train)), np.max(np.abs(u_test))
+        my_train, my_test = np.max(np.abs(y_train)), np.max(np.abs(y_test))
 
-        n_train = int(0.2 * df.shape[0])
-        u_train, u_test = u[-n_train:], u[:-n_train]
-        y_train, y_test = y[-n_train:], y[:-n_train]
+        u_train, u_test = u_train / mu_train, u_test / mu_test
+        y_train, y_test = y_train / my_train, y_test / my_test
+
+        plot_io(
+            u=u_train, y=y_train, title=f"{dataset_name.replace('-', ' ')}"
+        )
+
+    if dataset_name == "SNLS80mV":
+        dataset_name = "silverbox"
+
+    plt.savefig(f"src/results/{dataset_name}/io.png")
+    plt.show()
 
     # creating the data matrix for the train set
 
-    nu, ny, ne = 3, 3, 0
+    nu, ny, ne = 5, 5, 0
     dm = sd.data_matrix(u=u_train, y=y_train, nu=nu, ny=ny, ne=ne)
 
     # creating the candidate matrix for the train set
-    nlin = 3
+    nlin = 1
     cm, comb = sd.candidate_matrix(dm, nlin)
 
     Y = y_train[:-max(nu, ny, ne)]
 
-    tol = 0.01
+    tol = 0
     # structure selection with frols
-    selected, ERR = frols(cm, Y, tol, 5)
+    selected, ERR = frols(cm, Y, tol, 10)
 
     # parameter estimation on train set
     P = cm[:, selected]
@@ -96,6 +124,9 @@ if __name__ == "__main__":
         y=Y, y_pred=y_pred,
         title=f"{dataset_name.replace('-', ' ')} - Train"
     )
+
+    plt.savefig(f"src/results/{dataset_name}/FROLS/train.png")
+    plt.show()
 
     print("ERRi = ", ERR)
     print("ESR = %f" % (1 - np.sum(ERR)))
@@ -122,6 +153,8 @@ if __name__ == "__main__":
         y=Y, y_pred=y_pred,
         title=f"{dataset_name.replace('-', ' ')} - Validation"
     )
+
+    plt.savefig(f"src/results/{dataset_name}/FROLS/test.png")
 
     # computes mean squared error
 
