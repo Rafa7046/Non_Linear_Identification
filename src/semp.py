@@ -1,5 +1,4 @@
 import numpy as np
-import matplotlib.pyplot as plt
 import sysid as sd
 
 from utils import plot_y
@@ -7,8 +6,10 @@ from utils import plot_y
 
 class Semp:
     def __init__(self, u, y, l, nu, ny, ne):
-        self.u = u
-        self.y = y
+        self.maxu = max(abs(u))
+        self.maxy = max(abs(y))
+        self.u = u/max(abs(u))
+        self.y = y/max(abs(y))
         self.nu = nu
         self.ny = ny
         self.ne = ne
@@ -17,7 +18,7 @@ class Semp:
         self.limit = -max(self.nu, self.ny, self.ne)
 
     def __plot(self, t, y, y_hat, title, error):
-        plot_y(y=y[: self.limit], y_pred=y_hat, title=title)
+        plot_y(y=y[: self.limit]*self.maxy, y_pred=y_hat*self.maxy, title=title)
         print(f"MSE of the Model = {error}")
         print("=" * 30)
 
@@ -72,7 +73,8 @@ class Semp:
             y_hat, aux = self.__prediction(psi_in, psi_out, y_train, i)
 
             Ji = self.__msse(y_train, y_hat)
-            if Ji < J:
+            srr = (J - Ji)/np.mean(np.power(y_train, 2))
+            if srr > 0:
                 J = Ji
                 psi_in = aux.copy()
                 comb_in.append(comb_out[i])
@@ -88,7 +90,8 @@ class Semp:
             theta = np.linalg.inv(aux.T @ aux) @ aux.T @ y_train
             y_hat = aux @ theta
             Ji = self.__msse(y_train, y_hat)
-            if Ji < J:
+            srr = (J - Ji)/np.mean(np.power(y_train, 2))
+            if srr > 0:
                 J = Ji
                 psi_in = np.delete(psi_in, i, 1)
                 comb_in.pop(i)
@@ -131,11 +134,11 @@ class Semp:
             self.__msse(y_test[: self.limit], y_hat_test),
         )
 
-        return y_hat, y_hat_test, theta, comb
+        return y_hat, y_hat_test, theta, comb, self.__msse(y_test[: self.limit], y_hat_test)
 
     def run(self, validation=0, title=""):
         if validation:
-            y_hat, y_hat_test, theta, comb = self.__validate(title)
+            y_hat, y_hat_test, theta, comb, error = self.__validate(title)
             self.y_hat_test = y_hat_test
 
         else:
@@ -143,6 +146,7 @@ class Semp:
             self.__plot(
                 self.t, self.y, y_hat, title, self.__msse(self.y[: self.limit], y_hat)
             )
+            error = self.__msse(self.y[: self.limit], y_hat)
 
         print("=" * 30)
         print(f"Non linear Regressors:")
@@ -153,3 +157,5 @@ class Semp:
         self.y_hat = y_hat
         self.theta = theta
         self.regressors = comb
+
+        return error 
