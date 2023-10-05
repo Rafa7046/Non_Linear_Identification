@@ -3,7 +3,6 @@ import sysid as sd
 
 from utils import plot_y
 
-
 class Semp:
     def __init__(self, u, y, l, nu, ny, ne):
         self.maxu = max(abs(u))
@@ -68,19 +67,32 @@ class Semp:
         comb_in = []
         psi_out, comb_out = sd.candidate_matrix(data_matrix, self.l)
         J = np.inf
+        offset = 0
+        i = 0
 
-        for i in range(psi_out.shape[1]):
+        while i < (psi_out.shape[1]):
             y_hat, aux = self.__prediction(psi_in, psi_out, y_train, i)
 
-            Ji = self.__msse(y_train, y_hat)
-            srr = (J - Ji)/np.mean(np.power(y_train, 2))
-            if srr > 0:
+            Ji = self.__msse(y_train, y_hat) + 0.000001*(len(comb_in)-offset)
+            if Ji < J:
                 J = Ji
                 psi_in = aux.copy()
                 comb_in.append(comb_out[i])
+                i += 1
+            else:
+                if i >= self.ny:
+                    break
+                J = np.inf
+                i = self.ny
+                offset = len(comb_in)
 
-        theta = np.linalg.inv(psi_in.T @ psi_in) @ psi_in.T @ y_train
-        y_hat = psi_in @ theta
+        try:
+            theta = np.linalg.inv(psi_in.T @ psi_in) @ psi_in.T @ y_train
+            y_hat = aux @ theta
+        except:
+            theta = (1 / np.dot(psi_in.T, psi_in)) * psi_in.T @ y_train
+            y_hat = psi_in * theta
+
         J = self.__msse(y_train, y_hat)
 
         i = 0
