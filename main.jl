@@ -3,13 +3,15 @@ using Plots
 using Plots.Measures
 
 include("frols.jl")
+include("gram_schmidt.jl")
 
 # ==========================================================
 # TOP-LEVEL CONFIGURATION
 # Set DATASET to :CascadedTanks or :Silverbox
 # ==========================================================
-const DATASET = :CascadedTanks
-const SHOW_PLOT = true
+const DATASET = :Silverbox
+const SHOW_PLOT = false
+const N_TERMS = 5
 
 # 1. Import Python library
 nb = pyimport("nonlinear_benchmarks")
@@ -33,7 +35,7 @@ function load_data()
     end
 end
 
-function run_identification()
+function run_frols_identification()
     u_tr, y_tr, u_te, y_te, label = load_data()
 
     # 3. Construct a simple Candidate Dictionary
@@ -103,10 +105,69 @@ function evaluate_model()
     readline()
 end
 
+# --- 3. Execution & Evaluation ---
+function run_gram_identification()
+    u_tr, y_tr, u_te, y_te, label = load_data()
+
+    println("Building Candidate Matrices...")
+    Y_tr, P_tr = build_narx_dictionary(u_tr, y_tr, nu=2, ny=2)
+    Y_te, P_te = build_narx_dictionary(u_te, y_te, nu=2, ny=2)
+
+    println("Running Modified Gram-Schmidt with ERR...")
+    selected_indices = gram_schmidt_err(Y_tr, P_tr, N_TERMS)
+
+    # Filter dictionaries to only selected columns
+    P_tr_sel = P_tr[:, selected_indices]
+    P_te_sel = P_te[:, selected_indices]
+
+    # Compute Parameters using Least Squares (\ operator)
+    θ_hat = P_tr_sel \ Y_tr
+    println("\nEstimated Parameters (Θ): ", θ_hat)
+
+    # Predict on Test Set (One-Step Ahead)
+    y_hat_te = P_te_sel * θ_hat
+
+    # Compute Metrics
+    mae = mean(abs.(Y_te .- y_hat_te))
+    mse = mean((Y_te .- y_hat_te) .^ 2)
+    println("Test MAE: ", mae)
+    println("Test MSE: ", mse)
+
+    # Plotting (Paper Style)
+    len = min(1024, length(Y_te))
+    steps = 0:len-1
+
+    p = plot(steps, Y_te[1:len],
+        linecolor=:black,
+        label="Measured (y)",
+        xlabel="timestep",
+        ylabel="amplitude",
+        title="$label - Test Set (GS-ERR)",
+        grid=true,
+        framestyle=:box,
+        lw=1.5,
+        legend=:outerbottomright,
+        left_margin=15mm,
+        bottom_margin=15mm,
+        right_margin=25mm)
+
+    plot!(p, steps, y_hat_te[1:len],
+        linecolor=:red,
+        linestyle=:dash,
+        label="Predicted (y_hat)",
+        lw=1.5)
+
+    display(plot(p, size=(1200, 500)))
+
+    println("\nPress [Enter] to exit.")
+    readline()
+end
+
 # --- Execution ---
 
-run_identification()
-evaluate_model()
+# run_frols_identification()
+# evaluate_model()
+run_gram_identification()
 
 if SHOW_PLOT
     u_tr, y_tr, u_te, y_te, label = load_data()
