@@ -1,60 +1,34 @@
-# frols.jl
-using LinearAlgebra
-using Statistics
+function fit(algo::FROLS, u, y, Y_target, P)
+    N, M = size(P)
+    selected = Int[]
+    rem_idx = collect(1:M)
+    Q = zeros(N, algo.max_terms)
+    σy = var(Y_target) * (N - 1) / N
 
-"""
-    frols(y, candidates; M0, threshold)
-    ... (docstring) ...
-"""
-function frols(y::Vector{T}, candidates::Matrix{T}; M0=nothing, threshold=1e-6) where T<:AbstractFloat
-    N, M = size(candidates)
-    M0 = isnothing(M0) ? M : min(M0, M)
-
-    selected_indices = Int[]
-    remaining_indices = collect(1:M)
-    Q = zeros(T, N, M0)
-    σy = var(y) * (N - 1) / N
-
-    for s in 1:M0
+    for s in 1:algo.max_terms
         best_err = -Inf
-        best_idx_in_rem = -1
-        best_q = zeros(T, N)
-
-        for (i, idx) in enumerate(remaining_indices)
-            p_m = candidates[:, idx]
-            q_m = copy(p_m)
-            # Orthogonalization Step
+        best_i = -1
+        best_q = zeros(N)
+        for (i, idx) in enumerate(rem_idx)
+            q_m = copy(P[:, idx])
             for r in 1:(s-1)
                 qr = Q[:, r]
-                α = dot(qr, p_m) / dot(qr, qr)
-                q_m .-= α .* qr
+                q_m .-= (dot(qr, P[:, idx]) / dot(qr, qr)) .* qr
             end
-
             den = dot(q_m, q_m)
             if den < 1e-12
                 continue
             end
-
-            g_m = dot(y, q_m) / den
-            err = (g_m^2 * den) / (N * σy)
-
+            err = ((dot(Y_target, q_m) / den)^2 * den) / (N * σy)
             if err > best_err
                 best_err = err
-                best_idx_in_rem = i
+                best_i = i
                 best_q = q_m
             end
         end
-
-        if best_idx_in_rem == -1 || best_err < threshold
-            break
-        end
-
-        push!(selected_indices, remaining_indices[best_idx_in_rem])
+        push!(selected, rem_idx[best_i])
         Q[:, s] .= best_q
-        deleteat!(remaining_indices, best_idx_in_rem)
+        deleteat!(rem_idx, best_i)
     end
-
-    A = candidates[:, selected_indices]
-    theta = A \ y
-    return selected_indices, theta
+    return selected, P[:, selected] \ Y_target
 end
