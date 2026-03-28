@@ -1,10 +1,10 @@
 import numpy as np
-from rust_nlsi import py_run_semp
+from rust_nlsi import py_run_frols
 from src.plotting import plot_y
 
 
-class Semp:
-    def __init__(self, u, y, l, nu, ny, ne):
+class Frols:
+    def __init__(self, u, y, nu, ny, ne=0, nl=1, tol=0.0, max_iter=10):
         self.maxu = max(abs(u))
         self.maxy = max(abs(y))
         self.u = u
@@ -12,7 +12,9 @@ class Semp:
         self.nu = nu
         self.ny = ny
         self.ne = ne
-        self.l = l
+        self.nl = nl
+        self.tol = tol
+        self.max_iter = max_iter
         self.limit = -max(self.nu, self.ny, max(self.ne, 1))
 
     def _plot(self, y, y_hat, title, error):
@@ -21,19 +23,22 @@ class Semp:
         print("=" * 30)
 
     def run(self, validation=False, title=""):
-        result = py_run_semp(
+        result = py_run_frols(
             self.u.tolist(),
             self.y.tolist(),
-            self.l,
             self.nu,
             self.ny,
             self.ne,
+            self.nl,
+            self.tol,
+            self.max_iter,
             bool(validation),
         )
 
-        self.y_hat = np.array(result.y_hat)
+        self.y_hat = np.array(result.y_hat_train)
         self.theta = np.array(result.theta)
         self.regressors = result.regressors
+        self.err = result.err
 
         if validation:
             self.y_hat_test = np.array(result.y_hat_test)
@@ -51,9 +56,11 @@ class Semp:
             self._plot(y_norm, self.y_hat, title, result.mse_train)
             error = result.mse_train
 
-        print("Non-linear Regressors:")
+        print("Selected Regressors:")
         for name in result.regressor_names:
             print(f"  {name}")
+        print(f"ERR: {self.err}")
+        print(f"ESR: {1 - sum(self.err):.6f}")
         print(f"Theta: {self.theta}")
         print("=" * 30)
 

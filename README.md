@@ -1,87 +1,149 @@
-# Non Linear Identification
+# Non-Linear System Identification
 
-# Data description
+Identificação de sistemas não-lineares usando três algoritmos de seleção de estrutura, com backend de computação em **Rust** (via PyO3) e interface/plots em **Python**.
 
-The data used to test the algorithms were gathered online from the [DaISy](https://homes.esat.kuleuven.be/~smc/daisy/daisydata.html)
-and [Nonlinear Benchmarks](https://www.nonlinearbenchmark.org/benchmarks) databases. In the following we give a brief description of each
-dataset.
+## Algoritmos
+
+| Algoritmo | Descrição |
+|---|---|
+| **SEMP** | Structure Selection via ERR with Model Pruning — seleção forward + eliminação backward |
+| **FROLS** | Forward Regression Orthogonal Least Squares — Gram-Schmidt com critério de parada por ESR |
+| **Gram-Schmidt** | Seleção de estrutura por número fixo de termos (n_theta) — compara modelo completo vs selecionado |
+
+## Estrutura do projeto
+
+```
+├── data/                    # Datasets (.csv)
+├── notebooks/               # Jupyter notebooks
+│   ├── main.ipynb           # Benchmark completo (3 algoritmos × 5 datasets)
+│   ├── SEMP.ipynb           # SEMP em todos os datasets
+│   ├── FROLS.ipynb          # FROLS em todos os datasets
+│   └── NLSI.ipynb           # Gram-Schmidt em todos os datasets
+├── rust_backend/            # Código-fonte Rust (PyO3)
+│   ├── Cargo.toml
+│   └── src/
+│       ├── lib.rs           # Bindings PyO3 (módulo rust_nlsi)
+│       ├── semp.rs          # Algoritmo SEMP
+│       ├── frols.rs         # Algoritmo FROLS
+│       ├── gram_schmidt.rs  # Algoritmo Gram-Schmidt
+│       ├── sysid.rs         # data_matrix, candidate_matrix, combinações
+│       └── linalg.rs        # Inversão de matriz, least squares
+├── src/                    # Pacote Python (wrappers + plots)
+│   ├── __init__.py
+│   ├── semp.py              # Classe Semp
+│   ├── frols.py             # Classe Frols
+│   ├── gram_schmidt.py      # Classe GramSchmidt
+│   └── plotting.py          # Funções de plot (matplotlib)
+└── README.md
+```
+
+## Pré-requisitos
+
+- Python 3.13+
+- Rust (via [rustup](https://rustup.rs/))
+- [maturin](https://github.com/PyO3/maturin): `pip install maturin`
+
+## Como compilar e rodar
+
+### 1. Compilar o backend Rust
+
+```bash
+cd rust_backend
+python -m maturin build --release
+```
+
+### 2. Instalar o módulo compilado
+
+```bash
+python -m pip install target/wheels/rust_nlsi-0.1.0-cp313-cp313-win_amd64.whl --force-reinstall
+```
+
+### 3. Instalar dependências Python
+
+```bash
+pip install numpy pandas matplotlib jinja2
+```
+
+### 4. Rodar os notebooks
+
+Abra os notebooks na pasta `notebooks/` no VS Code ou Jupyter:
+
+- **`main.ipynb`** — roda os 3 algoritmos em todos os 5 datasets e gera tabela comparativa
+- **`SEMP.ipynb`** — apenas SEMP
+- **`FROLS.ipynb`** — apenas FROLS
+- **`NLSI.ipynb`** — apenas Gram-Schmidt
+
+### Alterando o código Rust
+
+1. Edite os arquivos em `rust_backend/src/`
+2. Recompile: `cd rust_backend && python -m maturin build --release`
+3. Reinstale o wheel: `pip install target/wheels/rust_nlsi-*.whl --force-reinstall`
+4. Reinicie o kernel do notebook
+
+## Uso via Python
+
+```python
+import pandas as pd
+from src import Semp, Frols, GramSchmidt
+
+df = pd.read_csv('data/exchanger.csv')
+u, y = df['q'].values, df['th'].values
+
+# SEMP
+semp = Semp(u, y, l=1, nu=2, ny=2, ne=0)
+semp.run(validation=True, title='Exchanger — SEMP')
+
+# FROLS
+frols = Frols(u, y, nu=5, ny=5, ne=0, nl=1, tol=0.0, max_iter=10)
+frols.run(validation=True, title='Exchanger — FROLS')
+
+# Gram-Schmidt
+gs = GramSchmidt(u, y, nu=2, ny=2, nl=3, n_theta=4)
+gs.run(validation=True, title='Exchanger — Gram-Schmidt')
+```
+
+---
+
+# Descrição dos datasets
+
+Os dados usados para testar os algoritmos foram obtidos online das bases [DaISy](https://homes.esat.kuleuven.be/~smc/daisy/daisydata.html) e [Nonlinear Benchmarks](https://www.nonlinearbenchmark.org/benchmarks).
 
 ## Ball and beam
 
-Data in the `ball-and-beam.csv` file of a the ball and beam practicum at ESAT-SISTA.
+Arquivo `ball-and-beam.csv` — practicum ball and beam do ESAT-SISTA.
 
-* Sampling time := 0.1 sec
-* Number of samples := 1000 samples
-* Inputs
-    * u := angle of the beam
-* Outputs
-    * y := position of the ball
-* Columns
-    1. input u
-    2. output y
+- Amostragem: 0.1 s | Amostras: 1000
+- Entrada `u`: ângulo do beam
+- Saída `y`: posição da bola
 
-## Liquid-saturated steam heat exchanger 
+## Liquid-saturated steam heat exchanger
 
-Data in the `exchanger.csv` file of a liquid-satured steam heat exchanger, where water is
-heated by pressurized saturated steam through a copper tube. The output variable is the
-outlet liquid temperature. The input variables are the liquid flow rate, the steam
-temperature, and the inlet liquid temperature.
+Arquivo `exchanger.csv` — trocador de calor a vapor saturado.
 
-* Sampling time := 1 s
-* Number of samples := 4000 samples
-* Inputs
-    * q := liquid flow rate 
-* Outputs
-    * th := outlet liquid temperature
-* Columns
-    1. time-steps ts
-    2. input q
-    3. output th 
+- Amostragem: 1 s | Amostras: 4000
+- Entrada `q`: vazão do líquido
+- Saída `th`: temperatura de saída
 
-## Data from a flexible robot arm
+## Flexible robot arm
 
-Data in the `robot-arm.csv` file from a flexible robot arm. The arm is installed on an
-electrical motor. The transfer function has been modeled from the measured reaction 
-torque of the structure on the ground to the acceleration of the flexible arm. The applied
-input is a periodic sine sweep.
+Arquivo `robot-arm.csv` — braço robótico flexível.
 
-* Sampling time := _unknown_
-* Number of samples := 1024 samples
-* Inputs
-    * u := reaction torque of the structure
-* Outputs
-    * y := accelaration of the flexible arm
-* Columns
-	1. input u
-	2. output y
+- Amostras: 1024
+- Entrada `u`: torque de reação
+- Saída `y`: aceleração do braço flexível
 
-## Data from Cascaded Tanks with Overflow
+## Cascaded tanks with overflow
 
-Data in `tanque.csv` file from Cascaded Tanks with Overflow. The cascaded tanks system is a fluid level control system consisting of two tanks with free outlets fed by a pump. The input signal controls a water pump that delivers the water from a reservoir into the upper water tank. The water of the upper tank flows through a small opening into the lower tank, and finally through a small opening from the lower tank back into the reservoir. 
+Arquivo `tanque.csv` — tanques em cascata com overflow.
 
-* Sampling time := 4 s
-* Number of samples := 1024 samples
-* Inputs
-    * uVal := Tension
-* Outputs
-    * yVal := Level of water
-* Columns
-	1. uEst
-	2. uVal
- 	3. yEst
- 	4. yVal
-  	5. Ts
+- Amostragem: 4 s | Amostras: 1024
+- Entrada `uEst`: tensão
+- Saída `yEst`: nível de água
 
- ## Data from Silverbox System
+## Silverbox system
 
-Data in `SNLS80mV.csv` file from Silverbox System. The Silverbox system can be seen as an electronic implementation of the Duffing oscillator. It is build as a 2nd order linear time-invariant system with a 3rd degree polynomial static nonlinearity around it in feedback. This type of dynamics are, for instance, often encountered in mechanical systems.
+Arquivo `SNLS80mV.csv` — oscilador de Duffing eletrônico.
 
-* Sampling time := _unknown_
-* Number of samples := 131073 samples
-* Inputs
-    * V1 := is the input record 
-* Outputs
-    * V2 := is the measured output
-* Columns
-    1. V1
-    2. V2
+- Amostras: 131073
+- Entrada `V1`: sinal de entrada
+- Saída `V2`: saída medida
