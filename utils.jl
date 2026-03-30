@@ -1,52 +1,56 @@
-function load_dataset(dataset_sym::Symbol)
+using PythonCall
+using Plots
+using Plots.Measures
+
+function load_normalized_dataset(dataset_name::String)
     nb = pyimport("nonlinear_benchmarks")
-    if dataset_sym == :CascadedTanks
+    if dataset_name == "cascadedTanks"
         train_val, test = nb.Cascaded_Tanks()
         u_tr, y_tr = pyconvert(Vector{Float64}, train_val.u), pyconvert(Vector{Float64}, train_val.y)
         u_te, y_te = pyconvert(Vector{Float64}, test.u), pyconvert(Vector{Float64}, test.y)
-        return ExperimentData("Cascaded Tanks", u_tr, y_tr, u_te, y_te)
-    elseif dataset_sym == :Silverbox
+
+        mu_train, mu_test = maximum(abs.(u_tr)), maximum(abs.(u_te))
+        my_train, my_test = maximum(abs.(y_tr)), maximum(abs.(y_te))
+
+        return u_tr ./ mu_train, y_tr ./ my_train, u_te ./ mu_test, y_te ./ my_test
+    elseif dataset_name == "silverbox"
         train_val, test = nb.Silverbox()
         test_ms = test[0]
         u_tr, y_tr = pyconvert(Vector{Float64}, train_val.u), pyconvert(Vector{Float64}, train_val.y)
         u_te, y_te = pyconvert(Vector{Float64}, test_ms.u), pyconvert(Vector{Float64}, test_ms.y)
-        return ExperimentData("Silverbox", u_tr, y_tr, u_te, y_te)
+
+        mu, my = maximum(abs.(u_tr)), maximum(abs.(y_tr))
+        n_train = Int(floor(0.2 * length(u_tr)))
+        return (u_tr[end-n_train+1:end] ./ mu, y_tr[end-n_train+1:end] ./ my,
+            u_tr[1:end-n_train] ./ mu, y_tr[1:end-n_train] ./ my)
     else
-        error("Unknown dataset")
+        error("Dataset mapping not implemented for: $dataset_name")
     end
 end
 
-function build_narx_dictionary(u, y; max_lag=2)
-    N = length(y)
-    Y_target = y[max_lag+1:end]
-    P_linear = zeros(N - max_lag, max_lag * 2)
+function plot_io(u, y, title_str, save_path)
+    p = plot(layout=(2, 1), size=(800, 500), plot_title=title_str)
+    plot!(p[1], u, label="u", linecolor=:red, ylabel="Input")
+    plot!(p[2], y, label="y", linecolor=:black, ylabel="Output", xlabel="Samples")
 
-    for k in (max_lag+1):N
-        idx = k - max_lag
-        for i in 1:max_lag
-            P_linear[idx, i] = y[k-i]
-            P_linear[idx, max_lag+i] = u[k-i]
-        end
-    end
-    P_nonlinear = hcat(P_linear, P_linear .^ 2, P_linear .^ 3)
-    return Y_target, P_nonlinear
+    mkpath(dirname(save_path))
+    savefig(p, save_path)
+    display(p)
+
+    println(">>> Plot displayed: $title_str")
+    println(">>> Press [Enter] to continue execution...")
+    readline()
 end
 
-function simulate_narx(u, y_true, selected_indices, theta; max_lag=2)
-    N = length(u)
-    y_sim = copy(y_true)
+function plot_y(y, y_pred, title_str, save_path)
+    p = plot(y, label="True (y)", linecolor=:black, lw=1.5, title=title_str)
+    plot!(p, y_pred, label="Predicted (y_hat)", linecolor=:red, linestyle=:dash, lw=1.5)
 
-    for k in (max_lag+1):N
-        row_linear = Float64[]
-        for i in 1:max_lag
-            push!(row_linear, y_sim[k-i])
-        end
-        for i in 1:max_lag
-            push!(row_linear, u[k-i])
-        end
+    mkpath(dirname(save_path))
+    savefig(p, save_path)
+    display(p)
 
-        row_full = vcat(row_linear, row_linear .^ 2, row_linear .^ 3)
-        y_sim[k] = dot(row_full[selected_indices], theta)
-    end
-    return y_sim
+    println(">>> Plot displayed: $title_str")
+    println(">>> Press [Enter] to continue execution...")
+    readline()
 end

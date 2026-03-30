@@ -1,119 +1,61 @@
-using PythonCall
-using Plots
-using Plots.Measures
 using LinearAlgebra
 using Statistics
 
-struct ExperimentData
-    name::String
-    u_train::Vector{Float64}
-    y_train::Vector{Float64}
-    u_test::Vector{Float64}
-    y_test::Vector{Float64}
-end
-
-struct ModelResult
-    algo_name::String
-    selected_indices::Vector{Int}
-    theta::Vector{Float64}
-    y_hat_test::Vector{Float64}
-    mse::Float64
-    mae::Float64
-end
-
-abstract type SysIdAlgorithm end
-
-Base.@kwdef struct FROLS <: SysIdAlgorithm
-    max_terms::Int = 5
-end
-
-Base.@kwdef struct GSERR <: SysIdAlgorithm
-    max_terms::Int = 5
-end
-
-Base.@kwdef struct SEMP <: SysIdAlgorithm
-    max_terms::Int = 5
-    lambda::Float64 = 0.05
-end
-
+include("sysid.jl")
 include("utils.jl")
-include("frols.jl")
-include("gram_schmidt.jl")
-include("semp.jl")
-
-# ==========================================================
-# TOP-LEVEL CONFIGURATION
-# Set DATASET to :CascadedTanks or :Silverbox
-# ==========================================================
-const DATASET = :CascadedTanks
-const N_TERMS = 5
-const LAMBDA = 0.05
-
-function plot_comparison(data::ExperimentData, results::Vector{ModelResult}; max_lag=2)
-    Y_target = data.y_test[max_lag+1:end]
-    len = min(1024, length(Y_target))
-    steps = 0:len-1
-
-    p = plot(steps, Y_target[1:len],
-        label="Measured", linecolor=:black, lw=2,
-        xlabel="timestep", ylabel="amplitude",
-        title="$(data.name) - Algorithm Comparison",
-        grid=true, framestyle=:box,
-        legend=:outerbottomright,
-        left_margin=15mm, bottom_margin=15mm, right_margin=45mm)
-
-    colors = [:red, :blue, :green, :orange, :purple]
-    for (i, res) in enumerate(results)
-        plot!(p, steps, res.y_hat_test[1:len],
-            label="$(res.algo_name) (MSE: $(round(res.mse, digits=4)))",
-            linecolor=colors[i], linestyle=:dash, lw=1.5)
-    end
-
-    display(plot(p, size=(1400, 500)))
-end
-
-function run_benchmark(data::ExperimentData, algorithms::Vector{SysIdAlgorithm}; max_lag=2)
-    println("\n=== Starting Benchmark: $(data.name) ===")
-
-    Y_tr, P_tr = build_narx_dictionary(data.u_train, data.y_train; max_lag=max_lag)
-    results = ModelResult[]
-
-    for algo in algorithms
-        algo_name = string(typeof(algo))
-        println("-> Training $algo_name...")
-
-        # Dispatch dynamically calls the correct fit() based on the struct type
-        indices, theta = fit(algo, data.u_train, data.y_train, Y_tr, P_tr)
-
-        # Predict using Free-Run Simulation to ensure fair comparison
-        y_hat = simulate_narx(data.u_test, data.y_test, indices, theta; max_lag=max_lag)
-
-        Y_target = data.y_test[max_lag+1:end]
-        y_hat_target = y_hat[max_lag+1:end]
-
-        mse = mean((Y_target .- y_hat_target) .^ 2)
-        mae = mean(abs.(Y_target .- y_hat_target))
-
-        println("   Test MSE: $(round(mse, digits=6))")
-        push!(results, ModelResult(algo_name, indices, theta, y_hat_target, mse, mae))
-    end
-
-    plot_comparison(data, results; max_lag=max_lag)
-    return results
-end
 
 function main()
-    algorithms = SysIdAlgorithm[
-        FROLS(max_terms=N_TERMS),
-        GSERR(max_terms=N_TERMS),
-        SEMP(max_terms=N_TERMS, lambda=LAMBDA)
-    ]
+    dataset_name = "cascadedTanks" # "cascadedTanks" or "silverbox"
+    println("=== Starting Benchmark: $dataset_name ===")
 
-    data = load_dataset(DATASET)
-    run_benchmark(data, algorithms)
+    u_train, y_train, u_test, y_test = load_normalized_dataset(dataset_name)
 
-    println("\nPress [Enter] to exit.")
-    readline()
+    plot_io(u_train, y_train, "$(uppercasefirst(dataset_name)) - IO", "src/results/$dataset_name/io.png")
+
+    nu, ny, ne = 2, 2, 0
+    nlin = 2
+    tol = 0.0
+    max_iter = 10
+    n_max = max(nu, ny, ne)
+
+    dm_train = data_matrix(u_train, y_train, nu=nu, ny=ny, ne=ne)
+    cm_train, comb = candidate_matrix(dm_train, nlin)
+    Y_train = y_train[1:(end-n_max)]
+
+    println("\nRunning FROLS...")
+    selected, ERR = frols(cm_train, Y_train, tol, max_iter)
+
+    P_train = cm_train[:, selected]
+    T = P_train \ Y_train
+    y_pred_train = P_train * T
+
+    plot_y(Y_train, y_pred_train, "$(uppercasefirst(dataset_name)) - Train", "src/results/$dataset_name/FROLS/train.png")
+
+    esr = 1.0 - sum(ERR)
+    println("\nERRi = ", round.(ERR, digits=6))
+    println("ESR = $esr")
+    println("Selected terms: $(length(selected)) of $(length(comb)) with tol = $tol")
+
+    for (i, t) in zip(selected, T)
+        term_str = get_model_term(comb[i], nu, ny, ne)
+        println("  $term_str \t\t Weight: $(round(t, digits=4))")
+    end
+
+    println("\nValidating on Test Set...")
+    dm_test = data_matrix(u_test, y_test, nu=nu, ny=ny, ne=ne)
+    cm_test, _ = candidate_matrix(dm_test, nlin)
+
+    Y_test = y_test[1:(end-n_max)]
+    P_test = cm_test[:, selected]
+    y_pred_test = P_test * T
+
+    plot_y(Y_test, y_pred_test, "$(uppercasefirst(dataset_name)) - Validation", "src/results/$dataset_name/FROLS/test.png")
+
+    mse = mean((y_pred_test .- Y_test) .^ 2)
+    println("\nValidation MSE = $mse")
+    println("Experiment finished.")
 end
 
-main()
+if abspath(PROGRAM_FILE) == @__FILE__
+    main()
+end
